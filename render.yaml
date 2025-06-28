@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: landing-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        value: postgres://usuario:contraseña@host:puerto/nombre_de_base_de_datos
