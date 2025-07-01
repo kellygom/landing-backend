@@ -40,7 +40,7 @@ app.post("/api/pedidos", async (req, res) => {
 
     const query = `
       INSERT INTO pedidos 
-        (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
+        (nombre, telefono, cedula, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
       VALUES 
         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
@@ -48,8 +48,8 @@ app.post("/api/pedidos", async (req, res) => {
 
     const values = [
       nombre,
-      cedula,
       telefono,
+      cedula,
       direccion,
       barrio,
       ciudad,
