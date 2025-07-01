@@ -77,3 +77,13 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
+// En el backend
+app.get("/api/pedidos", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM pedidos ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al obtener los pedidos" });
+  }
+});
+
