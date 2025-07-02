@@ -1,49 +1,45 @@
 import express from "express";
 import cors from "cors";
 import pg from "pg";
-import jwt from "jsonwebtoken"; // JWT añadido
+import jwt from "jsonwebtoken"; // Asegúrate de instalar esto
 
 const { Pool } = pg;
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Secreto para firmar el token
-const JWT_SECRET = "secreto_super_seguro_123"; // ⚠️ cambia esto por uno más fuerte en producción
+// 🔐 Clave para firmar los tokens (cámbiala en producción)
+const JWT_SECRET = "super_secreto_123";
 
-// Usuarios simulados (puedes conectarlo con BD después)
-const usuarios = [
-  { username: "admin", password: "1234" } // Puedes cambiar esto
-];
+// Usuarios de prueba
+const usuarios = [{ username: "admin", password: "1234" }];
 
-// Conexión a PostgreSQL en Render
+// Conexión PostgreSQL (Render)
 const pool = new Pool({
   connectionString: 'postgresql://db_user:Vtv6BG1QNeyLKiGQPLvBJCmVtehAEosE@dpg-d1dh9h7fte5s73b5slu0-a/intermedio_vbb8',
   ssl: { rejectUnauthorized: false }
 });
 
-// 🟢 Ruta de prueba
+// Ruta de prueba
 app.get("/", (req, res) => {
   res.send("✅ API funcionando correctamente!");
 });
 
-// 🔐 Ruta de login (devuelve token)
+// Ruta de login
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
   const usuario = usuarios.find(u => u.username === username && u.password === password);
   if (!usuario) return res.status(401).json({ error: "Credenciales inválidas" });
 
-  // Genera el token
   const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: "2h" });
   res.json({ token });
 });
 
-// ✅ Middleware para proteger rutas
+// Middleware para proteger rutas
 function verificarToken(req, res, next) {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // formato: "Bearer TOKEN"
-
-  if (!token) return res.status(401).json({ error: "Token no proporcionado" });
+  const token = authHeader && authHeader.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Token requerido" });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: "Token inválido" });
@@ -52,8 +48,7 @@ function verificarToken(req, res, next) {
   });
 }
 
-// 🛡️ Rutas protegidas
-
+// Ruta protegida: obtener pedidos
 app.get("/api/pedidos", verificarToken, async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM pedidos ORDER BY id DESC");
@@ -63,6 +58,7 @@ app.get("/api/pedidos", verificarToken, async (req, res) => {
   }
 });
 
+// Ruta protegida: actualizar estado
 app.put("/api/pedidos/:id/estado", verificarToken, async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
@@ -78,6 +74,7 @@ app.put("/api/pedidos/:id/estado", verificarToken, async (req, res) => {
   }
 });
 
+// Ruta protegida: eliminar pedido
 app.delete("/api/pedidos/:id", verificarToken, async (req, res) => {
   const { id } = req.params;
 
@@ -89,7 +86,7 @@ app.delete("/api/pedidos/:id", verificarToken, async (req, res) => {
   }
 });
 
-// 🚀 Puerto
+// Puerto
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
