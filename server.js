@@ -32,7 +32,7 @@ app.post("/api/login", (req, res) => {
   if (!usuario) return res.status(401).json({ error: "Credenciales inválidas" });
 
   const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: "2h" });
-  res.json({ token });
+  res.json({ token }); // 👈 esto es lo que el frontend espera
 });
 
 // Middleware para proteger rutas
