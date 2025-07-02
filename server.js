@@ -28,6 +28,7 @@ app.get("/", (req, res) => {
 // Ruta de login
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
+  console.log("📩 Datos recibidos en /login:", req.body);
   const usuario = usuarios.find(u => u.username === username && u.password === password);
   if (!usuario) return res.status(401).json({ error: "Credenciales inválidas" });
 
