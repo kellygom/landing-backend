@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import pg from "pg";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import bcrypt from 'bcryptjs';
+
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import crypto from "crypto";
