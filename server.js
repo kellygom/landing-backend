@@ -109,6 +109,9 @@ const loginSchema = z.object({
   username: z.string().min(1).max(50),
   password: z.string().min(1).max(100)
 });
+app.get("/", (req, res) => {
+  res.send("🚀 API funcionando correctamente");
+});
 
 // 7. Rutas Seguras (Manteniendo lógica original pero con validación)
 app.post("/api/login", async (req, res) => {
