@@ -24,7 +24,7 @@ if (!process.env.DATABASE_URL) {
 const { Pool } = pg;
 const app = express();
 
-// 1. Configuración Segura Mejorada
+// Seguridad
 const JWT_CONFIG = {
   secret: process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex'),
   expiresIn: '1h',
@@ -32,7 +32,7 @@ const JWT_CONFIG = {
 };
 const SALT_ROUNDS = 12;
 
-// 2. Middlewares de Seguridad Mejorados
+// Middlewares
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -43,20 +43,14 @@ app.use(helmet({
     }
   }
 }));
-
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
-
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET || crypto.randomBytes(32).toString('hex')));
-
-// Configuración de logs
 app.use(morgan('combined'));
-
-// Headers de seguridad adicionales
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -64,24 +58,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// 3. Rate Limiting Mejorado
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: 'Demasiadas solicitudes desde esta IP',
-  skip: (req) => req.ip === '127.0.0.1' // Excluir localhost si es necesario
+  skip: (req) => req.ip === '127.0.0.1'
 });
-
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: 'Demasiados intentos de login desde esta IP'
 });
-
 app.use('/api/', apiLimiter);
 app.use('/api/login', loginLimiter);
 
-// 4. Conexión Segura a PostgreSQL (Manteniendo original)
+// Conexión PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { 
@@ -90,69 +81,60 @@ const pool = new Pool({
   } : false
 });
 
-// 5. Usuarios con Contraseñas Hasheadas (Manteniendo original)
+// Usuarios
 const usuarios = [
   {
     username: "admin",
-    passwordHash: bcrypt.hashSync("1234", SALT_ROUNDS) // Solo para desarrollo!
+    passwordHash: bcrypt.hashSync("1234", SALT_ROUNDS)
   }
 ];
 
-// 6. Validación de Entrada Mejorada (Manteniendo lógica original)
+// Validación
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return '';
   return input.replace(/[^a-zA-Z0-9\sáéíóúÁÉÍÓÚñÑ@.,-]/g, '');
 };
-
-// Esquema de validación para login
 const loginSchema = z.object({
   username: z.string().min(1).max(50),
   password: z.string().min(1).max(100)
 });
+
+// Ruta principal
 app.get("/", (req, res) => {
   res.send("🚀 API funcionando correctamente");
 });
 
-// 7. Rutas Seguras (Manteniendo lógica original pero con validación)
+// Login
 app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = loginSchema.parse(req.body);
     const sanitizedUsername = sanitizeInput(username);
-    
     const usuario = usuarios.find(u => u.username === sanitizedUsername);
     if (!usuario || !await bcrypt.compare(password, usuario.passwordHash)) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
-    const token = jwt.sign(
-      { 
-        username: usuario.username,
-        exp: Math.floor(Date.now() / 1000) + (60 * 60)
-      }, 
-      JWT_CONFIG.secret,
-      { algorithm: JWT_CONFIG.algorithm }
-    );
+    const token = jwt.sign({ username: usuario.username }, JWT_CONFIG.secret, {
+      algorithm: JWT_CONFIG.algorithm,
+      expiresIn: JWT_CONFIG.expiresIn
+    });
 
-    const cookieOptions = {
+    res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 3600000,
       signed: true
-    };
-
-    res.cookie('token', token, cookieOptions)
-       .json({ success: true });
-  } catch (error) {
+    }).json({ success: true });
+  } catch {
     res.status(400).json({ error: "Datos de entrada inválidos" });
   }
 });
 
-// 8. Middleware de Autenticación (Manteniendo lógica original pero mejorado)
+// Verificación token
 const verificarToken = (req, res, next) => {
   const token = req.signedCookies.token || req.headers['x-access-token'];
-  
   if (!token) return res.status(401).json({ error: "Acceso no autorizado" });
 
   jwt.verify(token, JWT_CONFIG.secret, { algorithms: [JWT_CONFIG.algorithm] }, (err, decoded) => {
@@ -162,7 +144,7 @@ const verificarToken = (req, res, next) => {
   });
 };
 
-// 9. Rutas Protegidas (Manteniendo lógica original)
+// Obtener pedidos (solo admin)
 app.get("/api/pedidos", verificarToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -179,16 +161,48 @@ app.get("/api/pedidos", verificarToken, async (req, res) => {
   }
 });
 
-// 10. Puerto Seguro (Manteniendo original)
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor seguro corriendo en puerto ${PORT}`);
+// 👉 AGREGADO: Recibir pedidos desde landing
+app.post("/api/pedidos", async (req, res) => {
+  try {
+    const {
+      nombre,
+      cedula,
+      telefono,
+      direccion,
+      barrio,
+      ciudad,
+      departamento,
+      modelo,
+      color,
+      talla,
+      cantidad,
+      precio
+    } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO pedidos 
+        (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
+      VALUES 
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING *`,
+      [nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio]
+    );
+
+    res.status(201).json({ success: true, pedido: result.rows[0] });
+  } catch (error) {
+    console.error("❌ Error al insertar pedido:", error);
+    res.status(500).json({ error: "Error al procesar el pedido" });
+  }
 });
 
 // Middleware de errores
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno del servidor' 
-  });
+  res.status(500).json({ error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno del servidor' });
+});
+
+// Iniciar servidor
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor seguro corriendo en puerto ${PORT}`);
 });
