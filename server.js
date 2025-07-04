@@ -106,8 +106,6 @@ app.get("/", (req, res) => {
 // Login
 app.post("/api/pedidos", async (req, res) => {
   try {
-    const { cliente, productos, total } = req.body;
-
     const {
       nombre,
       cedula,
@@ -115,23 +113,26 @@ app.post("/api/pedidos", async (req, res) => {
       direccion,
       barrio,
       ciudad,
-      departamento
-    } = cliente;
+      departamento,
+      modelo,
+      color,
+      talla,
+      cantidad,
+      precio
+    } = req.body;
+    
+    console.log("📦 Datos recibidos:", req.body); // <--- agrega esto
 
-    for (const producto of productos) {
-      const { modelo, color, talla, cantidad } = producto;
-
-      await pool.query(`
-        INSERT INTO pedidos 
+    const result = await pool.query(`
+      INSERT INTO pedidos 
         (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      `, [
-        nombre, cedula, telefono, direccion, barrio, ciudad, departamento,
-        modelo, color, talla, cantidad, total
-      ]);
-    }
+      VALUES 
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING *`,
+      [nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio]
+    );
 
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, pedido: result.rows[0] });
   } catch (error) {
     console.error("❌ Error al insertar pedido:", error);
     res.status(500).json({ error: "Error al procesar el pedido" });
