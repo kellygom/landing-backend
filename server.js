@@ -75,10 +75,9 @@ app.use('/api/login', loginLimiter);
 // Conexión PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { 
-    rejectUnauthorized: true,
-    ca: process.env.CA_CERT 
-  } : false
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Usuarios
@@ -105,32 +104,40 @@ app.get("/", (req, res) => {
 });
 
 // Login
-app.post("/api/login", async (req, res) => {
+app.post("/api/pedidos", async (req, res) => {
   try {
-    const { username, password } = loginSchema.parse(req.body);
-    const sanitizedUsername = sanitizeInput(username);
-    const usuario = usuarios.find(u => u.username === sanitizedUsername);
-    if (!usuario || !await bcrypt.compare(password, usuario.passwordHash)) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return res.status(401).json({ error: "Credenciales inválidas" });
+    const { cliente, productos, total } = req.body;
+
+    const {
+      nombre,
+      cedula,
+      telefono,
+      direccion,
+      barrio,
+      ciudad,
+      departamento
+    } = cliente;
+
+    for (const producto of productos) {
+      const { modelo, color, talla, cantidad } = producto;
+
+      await pool.query(`
+        INSERT INTO pedidos 
+        (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `, [
+        nombre, cedula, telefono, direccion, barrio, ciudad, departamento,
+        modelo, color, talla, cantidad, total
+      ]);
     }
 
-    const token = jwt.sign({ username: usuario.username }, JWT_CONFIG.secret, {
-      algorithm: JWT_CONFIG.algorithm,
-      expiresIn: JWT_CONFIG.expiresIn
-    });
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 3600000,
-      signed: true
-    }).json({ success: true });
-  } catch {
-    res.status(400).json({ error: "Datos de entrada inválidos" });
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.error("❌ Error al insertar pedido:", error);
+    res.status(500).json({ error: "Error al procesar el pedido" });
   }
 });
+
 
 // Verificación token
 const verificarToken = (req, res, next) => {
