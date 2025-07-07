@@ -3,7 +3,6 @@ import cors from "cors";
 import pg from "pg";
 import jwt from "jsonwebtoken";
 import bcrypt from 'bcryptjs';
-
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import crypto from "crypto";
@@ -12,19 +11,18 @@ import morgan from "morgan";
 import { z } from "zod";
 import dotenv from "dotenv";
 
-// Configuración de variables de entorno
 dotenv.config();
 
-// Validación de variables críticas
+// Validación de entorno
 if (!process.env.DATABASE_URL) {
-  console.error("Error: DATABASE_URL no está definida en las variables de entorno");
+  console.error("❌ Error: DATABASE_URL no definida");
   process.exit(1);
 }
 
 const { Pool } = pg;
 const app = express();
 
-// Seguridad
+// Seguridad y configuración
 const JWT_CONFIG = {
   secret: process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex'),
   expiresIn: '1h',
@@ -32,7 +30,7 @@ const JWT_CONFIG = {
 };
 const SALT_ROUNDS = 12;
 
-// Middlewares
+// Middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -58,26 +56,14 @@ app.use((req, res, next) => {
   next();
 });
 
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Demasiadas solicitudes desde esta IP',
-  skip: (req) => req.ip === '127.0.0.1'
-});
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: 'Demasiados intentos de login desde esta IP'
-});
-app.use('/api/', apiLimiter);
-app.use('/api/login', loginLimiter);
+// Rate limit
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+app.use('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }));
 
-// Conexión PostgreSQL
+// DB
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 // Usuarios
@@ -89,60 +75,43 @@ const usuarios = [
 ];
 
 // Validación
-const sanitizeInput = (input) => {
-  if (typeof input !== 'string') return '';
-  return input.replace(/[^a-zA-Z0-9\sáéíóúÁÉÍÓÚñÑ@.,-]/g, '');
-};
 const loginSchema = z.object({
   username: z.string().min(1).max(50),
   password: z.string().min(1).max(100)
 });
 
-// Ruta principal
+// Rutas
 app.get("/", (req, res) => {
   res.send("🚀 API funcionando correctamente");
 });
 
-// Login
-app.post("/api/pedidos", async (req, res) => {
+// ✅ LOGIN
+app.post("/api/login", async (req, res) => {
   try {
-    const {
-      nombre,
-      cedula,
-      telefono,
-      direccion,
-      barrio,
-      ciudad,
-      departamento,
-      modelo,
-      color,
-      talla,
-      cantidad,
-      precio
-    } = req.body;
-    
-    console.log("📦 Datos recibidos:", req.body); // <--- agrega esto
+    const { username, password } = req.body;
+    const parsed = loginSchema.safeParse({ username, password });
+    if (!parsed.success) return res.status(400).json({ error: "Datos inválidos" });
 
-    const result = await pool.query(`
-      INSERT INTO pedidos 
-        (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
-      VALUES 
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      RETURNING *`,
-      [nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio]
-    );
+    const usuario = usuarios.find((u) => u.username === username);
+    if (!usuario || !bcrypt.compareSync(password, usuario.passwordHash)) {
+      return res.status(401).json({ error: "Credenciales incorrectas" });
+    }
 
-    res.status(201).json({ success: true, pedido: result.rows[0] });
+    const token = jwt.sign({ username }, JWT_CONFIG.secret, {
+      expiresIn: JWT_CONFIG.expiresIn,
+      algorithm: JWT_CONFIG.algorithm,
+    });
+
+    res.json({ token });
   } catch (error) {
-    console.error("❌ Error al insertar pedido:", error);
-    res.status(500).json({ error: "Error al procesar el pedido" });
+    console.error("❌ Error en login:", error);
+    res.status(500).json({ error: "Error interno en login" });
   }
 });
 
-
-// Verificación token
+// ✅ Verificar token
 const verificarToken = (req, res, next) => {
-  const token = req.signedCookies.token || req.headers['x-access-token'];
+  const token = req.headers['authorization']?.split(' ')[1] || req.signedCookies.token;
   if (!token) return res.status(401).json({ error: "Acceso no autorizado" });
 
   jwt.verify(token, JWT_CONFIG.secret, { algorithms: [JWT_CONFIG.algorithm] }, (err, decoded) => {
@@ -152,7 +121,7 @@ const verificarToken = (req, res, next) => {
   });
 };
 
-// Obtener pedidos (solo admin)
+// ✅ Obtener pedidos
 app.get("/api/pedidos", verificarToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -169,22 +138,13 @@ app.get("/api/pedidos", verificarToken, async (req, res) => {
   }
 });
 
-// 👉 AGREGADO: Recibir pedidos desde landing
+// ✅ Insertar pedido (desde landing)
 app.post("/api/pedidos", async (req, res) => {
   try {
     const {
-      nombre,
-      cedula,
-      telefono,
-      direccion,
-      barrio,
-      ciudad,
-      departamento,
-      modelo,
-      color,
-      talla,
-      cantidad,
-      precio
+      nombre, cedula, telefono, direccion,
+      barrio, ciudad, departamento,
+      modelo, color, talla, cantidad, precio
     } = req.body;
 
     const result = await pool.query(`
@@ -192,9 +152,8 @@ app.post("/api/pedidos", async (req, res) => {
         (nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio)
       VALUES 
         ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      RETURNING *`,
-      [nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio]
-    );
+      RETURNING *
+    `, [nombre, cedula, telefono, direccion, barrio, ciudad, departamento, modelo, color, talla, cantidad, precio]);
 
     res.status(201).json({ success: true, pedido: result.rows[0] });
   } catch (error) {
@@ -206,11 +165,11 @@ app.post("/api/pedidos", async (req, res) => {
 // Middleware de errores
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno del servidor' });
+  res.status(500).json({ error: 'Error interno del servidor' });
 });
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor seguro corriendo en puerto ${PORT}`);
+  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
